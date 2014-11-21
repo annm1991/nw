@@ -45,7 +45,7 @@ void sr_init(struct sr_instance* sr)
 		printf("\nmutex init failed");
 		return 1;
 	}
-	pwospf_init(sr);
+	
     /* Add initialization code here! */
 } /* -- sr_init -- */
 
@@ -263,19 +263,19 @@ void ip_pkt_handle(struct sr_instance* sr, uint8_t* packet, unsigned int len, ch
 	printf("\nInside ip_pkt_handle");
 	struct sr_rt* rtable = sr->routing_table;;
 	struct sr_if* if_list = sr->if_list;
-	printf("\nCaching gateway");
+	// printf("\nCaching gateway");
 	while(rtable){
-		if(rtable->dest.s_addr == 0 && rtable->mask.s_addr == 0){
-			printf("\nGateway found in rtable");
+		//if(rtable->dest.s_addr == 0 && rtable->mask.s_addr == 0){
+			//printf("\nPrev hop found in rtable");
 			while(if_list){
-				printf("fdrgfrgr");
+				//printf("fdrgfrgr");
 				if(strcmp(if_list->name,rtable->interface) == 0){
 					int match = 1;
 					for(i = 0; i < 6; i++)
 					if(e_hdr->ether_dhost[i] != if_list->addr[i])
 					match = 0;
 					if(match == 1){
-					printf("\nPacket from gateway");
+					//printf("\nPacket from gateway");
 					struct arp_cache* cache = (struct arp_cache*)malloc(sizeof(struct arp_cache));
 					cache->ip = rtable->gw.s_addr;
 					for(i = 0; i < 6; i++){
@@ -286,7 +286,7 @@ void ip_pkt_handle(struct sr_instance* sr, uint8_t* packet, unsigned int len, ch
 					cache->time_stamp = time_stamp;
 					cache->next = NULL;
 					add_arp_cache(cache);
-					printf("\nGaateway added to cache");
+					printf("\nPrev hop added to cache");
 					}
 				}
 				if_list = if_list->next;
@@ -302,7 +302,7 @@ void ip_pkt_handle(struct sr_instance* sr, uint8_t* packet, unsigned int len, ch
 			cache->time_stamp = time_stamp;
 			cache->next = NULL;
 			add_arp_cache(cache);*/
-		}
+		//}
 		rtable = rtable->next;
 	}
 
@@ -533,7 +533,7 @@ void dequeue_pkt_count(uint32_t ip){
  * Method: dequeue_packet(uint32_t)
  * Scope: Global
  *--------------------------------------------------------------------------------------------------------------------------------------------------------*/
-void dequeue_packet(uint32_t ip){
+void dequeue_packet(uint32_t ip, uint32_t mask){
 	printf("\nI am dequeueing you");
 	struct packet_cache* temp = pkt_queue;
 	struct packet_cache* prev = NULL;
@@ -542,10 +542,15 @@ void dequeue_packet(uint32_t ip){
 	int pkt_dequeued = 0;
 
 	
+
 	while(temp){
 		is_reply_for_gw = chk_reply_for_gw(ip, temp->sr);
-
-		if(temp->ip == ip || (temp->is_for_gw == 1 && is_reply_for_gw == 1)){
+		uint32_t masked_value = temp->ip & mask;
+		printf("DEQUEUE: %s", inet_ntoa(*(struct in_addr*)&masked_value));
+		masked_value = ip & mask;
+		printf("DEQUEUE1: %s", inet_ntoa(*(struct in_addr*)&masked_value));
+		if(((temp->ip & mask) == (ip & mask)) || (temp->is_for_gw == 1 && is_reply_for_gw == 1)){
+			printf("dshfdshgerh");
 			if(prev == NULL){
 				packet_found = temp;
 				temp = temp->next;
@@ -730,6 +735,17 @@ void forward_ip_packet(struct sr_instance* sr, uint8_t* packet, unsigned int len
 				printf("\nCache entry found!!\n");
 				break;
 			}
+			else{
+				rtable = sr->routing_table;
+				while(rtable){
+					if(cache->ip == rtable->gw.s_addr && rtable->mask.s_addr != 0){
+						cache_found = cache;
+						printf("FORWARDING PACKET!!!!!");
+						break;
+					}
+					rtable = rtable->next;
+				}
+			}
 			cache = cache->next;
 		}
 	
@@ -792,7 +808,8 @@ void forward_ip_packet(struct sr_instance* sr, uint8_t* packet, unsigned int len
 	}
 }
 
-/*-------------------------------------------------------------------------* Method: calc_ip_checksum()
+/*-------------------------------------------------------------------------* 
+Method: calc_ip_checksum()
 *-----------------------------------------------------------------------*/
 uint16_t calc_ip_checksum(struct ip* ip_hdr){
 	uint32_t sum = 0;
@@ -845,6 +862,7 @@ void send_arp_request(struct sr_instance* sr, uint8_t* packet, unsigned int len,
 	struct sr_arphdr* a_hdr = (struct sr_arphdr*)(packet1 + sizeof(struct sr_ethernet_hdr));
 	struct sr_icmphdr* icmphdr = (struct sr_icmphdr*)(packet + sizeof(struct sr_ethernet_hdr) + sizeof(struct ip));
 	int i;
+	struct sr_rt* rtable;
 	
 	printf("Creating an arp req");
 	e_hdr->ether_type = ntohs(ETHERTYPE_ARP);
@@ -864,7 +882,7 @@ void send_arp_request(struct sr_instance* sr, uint8_t* packet, unsigned int len,
 	while(if_list){
 		if(strcmp(if_list->name, interface) == 0){
 			if(icmphdr->type == 0){
-			struct sr_rt* rtable = sr->routing_table;
+			rtable = sr->routing_table;
 			while(rtable){
 				if(rtable->dest.s_addr == 0 && rtable->mask.s_addr == 0){
 					a_hdr->ar_tip = rtable->gw.s_addr;		
@@ -874,6 +892,22 @@ void send_arp_request(struct sr_instance* sr, uint8_t* packet, unsigned int len,
 			}
 			//a_hdr->ar_tip = rtable->gw.s_addr;
 			}
+
+			//printf("I am here");
+			rtable = sr->routing_table;
+			while(rtable){
+				if(rtable->mask.s_addr != 0 && ((rtable->dest.s_addr & rtable->mask.s_addr) == (dest_ip & rtable->mask.s_addr))){
+					a_hdr->ar_tip = rtable->gw.s_addr;
+				}
+				// uint32_t temp = rtable->dest.s_addr & rtable->mask.s_addr;
+				// printf("\n%s\n", inet_ntoa(*(struct in_addr*)&temp));
+				// temp = dest_ip & rtable->mask.s_addr;
+				
+			 	//printf("\n\n\%s\n\n", inet_ntoa(*(struct in_addr*)&(rtable->dest.s_addr && rtable->mask.s_addr)));
+			 	//printf("%s\n", inet_ntoa(*(struct in_addr*)&(dest_ip && rtable->mask.s_addr)));
+			 	rtable = rtable->next;
+			}
+			printf("\nsENDING REQUEST TO : %s\n", inet_ntoa(*(struct in_addr*)&a_hdr->ar_tip));
 			for(i = 0; i < 6; i++){
 				a_hdr->ar_sha[i] = if_list->addr[i];
 				e_hdr->ether_shost[i] = a_hdr->ar_sha[i];
@@ -915,6 +949,7 @@ void arp_pkt_handle(struct sr_instance* sr, uint8_t* packet, unsigned int len, c
 	struct sr_ethernet_hdr* e_hdr = (struct sr_ethernet_hdr*)packet;
 	struct sr_arphdr* a_hdr = (struct sr_arphdr*)(packet + sizeof(struct sr_ethernet_hdr));
 	struct timeval tv;
+	struct sr_rt *rtable;
 	double now;
 
 	if(a_hdr->ar_op == ntohs(ARP_REQUEST)){
@@ -938,6 +973,7 @@ void arp_pkt_handle(struct sr_instance* sr, uint8_t* packet, unsigned int len, c
 		a_reply->ar_tip = a_reply->ar_sip;
 		a_reply->ar_sip= temp;
 		
+		//caching arp from where first packet comes
 		struct arp_cache* new_entry = (struct arp_cache*)malloc(sizeof(struct arp_cache));
 		new_entry->ip = a_reply->ar_tip;
 		for(int i = 0; i < ETHER_ADDR_LEN; i++){
@@ -956,14 +992,16 @@ void arp_pkt_handle(struct sr_instance* sr, uint8_t* packet, unsigned int len, c
 	}
 	else if(a_hdr->ar_op == ntohs(ARP_REPLY))
 	{
-		struct ip* ip_hdr = (struct ip*)(packet + sizeof(struct sr_ethernet_hdr));
+		/*struct ip* ip_hdr = (struct ip*)(packet + sizeof(struct sr_ethernet_hdr));
 		uint32_t dest_ip = ip_hdr->ip_dst.s_addr;
+		printf("\nPAcket needs to be dequeued for: %s", inet_ntoa(*(struct in_addr*)&dest_ip));*/
 		
 		printf("Received ARP Reply\n");
 		is_thread_alive = 0;
 		struct sr_arphdr* a_reply = (struct sr_arphdr*)(packet + sizeof(struct sr_ethernet_hdr));
 		
 		struct arp_cache* new_entry = (struct arp_cache*)malloc(sizeof(struct arp_cache));
+		uint32_t mask;
 		new_entry->ip = a_reply->ar_sip;
 		printf("\nDestination IP from arp reply: %s", inet_ntoa(*(struct in_addr*)&(a_reply->ar_sip)));
 		printf("\nMac entry into arpcache:");
@@ -980,7 +1018,7 @@ void arp_pkt_handle(struct sr_instance* sr, uint8_t* packet, unsigned int len, c
 			printf("Entry added into cache");
 			printf("\nARP Cache: \n");
 			print_cache();
-			printf("dfjfgergtrhrytyhtyhty");
+		//	printf("dfjfgergtrhrytyhtyhty");
 			struct packet_count* update_pkt = pkt_count;
 			while(update_pkt){
 				if(update_pkt->ip == new_entry->ip){
@@ -990,8 +1028,21 @@ void arp_pkt_handle(struct sr_instance* sr, uint8_t* packet, unsigned int len, c
 			}
 		
 			//is_thread_alive = 0;
-			printf("Dequeuing packets for : ");
-			dequeue_packet(new_entry->ip);
+			printf("\nDequeuing packets for : %s", inet_ntoa(*(struct in_addr*)&new_entry->ip));
+			rtable = sr->routing_table;
+			while(rtable){
+				if(strcmp(rtable->interface, interface) == 0)
+					mask = rtable->mask.s_addr;
+				rtable = rtable->next;
+			}
+			printf("dEQUEUEING FOR INTERFACE: %s\n", interface);
+			// while(rtable){
+			// 	if()
+			// 	rtable = rtable->next;
+			// }
+			//printf("\nPAcket needs to be dequeued for: %s", inet_ntoa(*(struct in_addr*)&dest_ip));
+			dequeue_packet(new_entry->ip, mask);
+			//dequeue_packet(dest_ip);
 		}
 		//sr_send_packet(sr, packet, len, interface);
 	}

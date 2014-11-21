@@ -3,7 +3,7 @@
  * Date: ?
  * Authors: Guido Apenzeller, Martin Casado, Virkam V.
  * Contact: casado@stanford.edu
- * 90904102 
+ *
  *---------------------------------------------------------------------------*/
 
 #ifndef SR_ROUTER_H
@@ -36,6 +36,8 @@
 struct sr_if;
 struct sr_rt;
 
+struct pwospf_subsys;
+
 /* ----------------------------------------------------------------------------
  * struct sr_instance
  *
@@ -58,6 +60,10 @@ struct sr_instance
     struct sr_if* if_list; /* list of interfaces */
     struct sr_rt* routing_table; /* routing table */
     FILE* logfile;
+    volatile uint8_t  hw_init; /* bool : hardware has been initialized */
+
+    /* -- pwospf subsystem -- */
+    struct pwospf_subsys* ospf_subsys;
 };
 
 /* -----------------------------------------------------------------------
@@ -69,11 +75,11 @@ struct sr_instance
 
 struct sr_icmphdr
 {
-	uint8_t type;
-	uint8_t code; 
-	uint16_t chksum;
-	uint16_t id;
-	uint16_t seq_n;
+    uint8_t type;
+    uint8_t code; 
+    uint16_t chksum;
+    uint16_t id;
+    uint16_t seq_n;
 };
 
 /*-------------------------------------------------------------------------
@@ -85,30 +91,31 @@ struct sr_icmphdr
 
 struct arp_cache
 {
-	uint32_t ip;
-	unsigned char mac[ETHER_ADDR_LEN];
-	double time_stamp;
-	struct arp_cache* next;
+    uint32_t ip;
+    unsigned char mac[ETHER_ADDR_LEN];
+    double time_stamp;
+    struct arp_cache* next;
 };
 
 struct packet_cache
 {
-	uint32_t ip;
-	uint32_t* packet;
-	struct sr_instance* sr;
-	char* interface;
-	int len;
-	int is_for_gw;
-	struct packet_cache* next;
+    uint32_t ip;
+    uint32_t* packet;
+    struct sr_instance* sr;
+    char* interface;
+    int len;
+    int is_for_gw;
+    struct packet_cache* next;
 };
 
 struct packet_count
 {
-	uint32_t ip;
-	int count_pkts;
-	int is_arp_reply;
-	struct packet_count* next;
+    uint32_t ip;
+    int count_pkts;
+    int is_arp_reply;
+    struct packet_count* next;
 };
+
 
 /* -- sr_main.c -- */
 int sr_verify_routing_table(struct sr_instance* sr);
@@ -126,6 +133,7 @@ char* get_broadcast_interface(struct sr_rt* rtable, uint32_t dest_ip);
 void forward_icmp_packet(struct sr_instance* sr, uint8_t* packet, unsigned int len, char* interface);
 void send_arp_request(struct sr_instance* sr, uint8_t* packet, unsigned int len, char * interface);
 void arp_packet_handle(struct sr_instance* sr, uint8_t* packet, unsigned int len, char* interface); 
+
 /* -- sr_if.c -- */
 void sr_add_interface(struct sr_instance* , const char* );
 void sr_set_ether_ip(struct sr_instance* , uint32_t );

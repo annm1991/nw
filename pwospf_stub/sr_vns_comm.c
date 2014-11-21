@@ -488,6 +488,7 @@ int sr_read_from_server_expect(struct sr_instance* sr /* borrowed */, int expect
                 return -1;
             }
             printf(" <-- Ready to process packets --> \n");
+            pwospf_init(sr);
             break;
 
             /* ---------------- VNS_RTABLE ---------------- */
